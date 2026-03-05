@@ -1,0 +1,179 @@
+:root {
+  --board-bg-1: #1c0a04;
+  --board-bg-2: #0d0402;
+  --board-border: #c8962a;
+  --bar-bg: rgba(15, 4, 0, 0.78);
+  --bear-off-bg: rgba(8, 2, 0, 0.85);
+  --mid-line: rgba(200, 150, 42, 0.3);
+  --label-gold: #d4a820;
+  --point-red: #b89040;
+  --point-cream: #e8d5a2;
+  --checker-shadow: rgba(0,0,0,0.6);
+  --checker-white-hi: #f8e8b0;
+  --checker-white-lo: #b88020;
+  --checker-black-hi: #6b0008;
+  --checker-black-lo: #1a0002;
+  --checker-white-stroke: #b08830;
+  --checker-black-stroke: #8b0808;
+  --checker-white-ring: rgba(200,160,30,0.7);
+  --checker-black-ring: rgba(180,20,20,0.45);
+  --checker-white-rosette: rgba(130,85,0,0.55);
+  --checker-black-rosette: rgba(210,160,25,0.62);
+  --label-white: #f8e8c0;
+  --label-yellow: #f0d060;
+  --label-light: #f0e0c0;
+  --mini-white: #d4a820;
+  --mini-black: #4a0006;
+  --mini-white-stroke: #c09020;
+  --mini-black-stroke: #8b1010;
+  --die-white-bg: #f0e4c0;
+  --die-black-bg: #5a0010;
+  --die-white-dots: #1a0a00;
+  --die-black-dots: #d4a820;
+  --hl-src: #ffd700;
+  --hl-dest: rgba(50,255,100,0.35);
+  --hl-dest-shadow: #50ff88;
+  --hl-bearoff: rgba(50,255,100,0.4);
+  --hl-combined: rgba(80,180,255,0.42);
+  --hl-combined-shadow: #60ccff;
+  --hl-queued: rgba(255,160,30,0.9);
+  --hl-queued-shadow: #ffaa20;
+  --hl-queued-dest: rgba(255,210,80,0.22);
+  --hl-queued-dest-shadow: rgba(255,190,40,0.5);
+  --opening-overlay: rgba(0,0,0,0.48);
+  --opening-vs: #f8e060;
+  --opening-die-w-shadow: rgba(255,220,100,0.8);
+  --opening-die-b-shadow: rgba(150,20,20,0.85);
+  --opening-die-b-bg: #4a0010;
+  --font-pt-label: bold 11px monospace;
+  --font-checker-count: bold 12px Georgia;
+  --font-bar-count: bold 11px Georgia;
+  --font-small-label: bold 10px Georgia;
+  --font-borne-count: 11px Georgia;
+  --font-opening-vs: bold 22px Georgia;
+  --font-opening-name: bold 13px Georgia;
+  /* Canvas geometry */
+  --canvas-w: 900;
+  --canvas-h: 620;
+  --board-margin: 22;
+  --point-w: 62;
+  --point-h: 255;
+  --bar-w: 64;
+  --bear-off-w: 52;
+  --checker-r: 23;
+  /* Regular dice */
+  --die-size: 36;
+  --die-corner-r: 5;
+  --die-dot-r: 3.5;
+  --die-dot-offset: 8;
+  /* Opening roll dice */
+  --opening-die-size: 50;
+  --opening-die-corner-r: 7;
+  --opening-die-dot-r: 4.5;
+  --opening-die-dot-offset: 12;
+  --opening-die-stroke-w: 2.5;
+  --opening-die-shadow-blur: 18;
+  /* Win/loss message */
+  --win-msg-color: #ffd700;
+  --win-glow-color: #ff8800;
+  --loss-msg-color: #ff8080;
+  --loss-glow-color: #cc2222;
+  --win-line-h: 60;
+  /* Board background image */
+  --board-bg-img-alpha: 0.52;
+  --board-overlay: rgba(0, 0, 0, 0.3);
+  /* Oriental geometric details */
+  --point-inlay: rgba(30, 12, 0, 0.72);
+  --die-inlay: rgba(180, 135, 22, 0.48);
+  --medallion-outer: rgba(200, 150, 30, 0.6);
+  --medallion-inner: rgba(230, 190, 60, 0.4);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d0200;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  min-height: 100vh; padding: 20px;
+  font-family: Georgia, serif; color: #f0e0c0;
+}
+h1 { font-size: 2.2em; color: #d4a054; margin-bottom: 14px; letter-spacing: 3px; text-shadow: 2px 2px 6px #000; }
+#action-bar { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; justify-content: center; }
+#status {
+  font-size: 1.1em; color: #f8e8a0; min-height: 1.6em;
+  text-align: center; margin-bottom: 6px;
+  text-shadow: 1px 1px 3px #000; max-width: 900px;
+}
+button {
+  padding: 8px 22px; background: #7a3010; color: #f0e0c0;
+  border: 2px solid #d4a054; border-radius: 5px; cursor: pointer;
+  font-size: 1em; font-family: Georgia, serif; transition: background 0.15s;
+}
+button:hover:not(:disabled) { background: #a04020; }
+button:disabled { opacity: 0.45; cursor: default; }
+#revertBtn { background: #3a1060; border-color: #9060d0; }
+#revertBtn:hover:not(:disabled) { background: #5a1890; }
+select {
+  padding: 7px 10px; background: #2a0e00; color: #f0e0c0;
+  border: 2px solid #c09040; border-radius: 5px; font-size: 1em; font-family: Georgia, serif;
+}
+label { color: #c0a070; font-size: 0.95em; }
+#rollBtn { display: none; }
+#board-wrapper { position: relative; display: inline-block; line-height: 0; }
+canvas { border: 3px solid #c09040; border-radius: 6px; cursor: pointer; display: block; max-width: 100%; }
+.roll-overlay-btn {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 36px;
+  font-size: 1.25em;
+  background: #7a3010;
+  color: #f8e8a0;
+  border: 3px solid #d4a054;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.7), 0 0 18px rgba(212,160,84,0.45);
+  letter-spacing: 1px;
+  transition: background 0.15s, box-shadow 0.15s;
+  z-index: 10;
+}
+.roll-overlay-btn:hover { background: #a04020; box-shadow: 0 4px 32px rgba(0,0,0,0.85), 0 0 28px rgba(212,160,84,0.7); }
+.roll-overlay-btn.visible { display: block; }
+#score-bar { display: flex; gap: 50px; font-size: 1em; color: #c0a070; margin-top: 8px; }
+#match-score-bar {
+  display: flex; gap: 80px; font-size: 1.1em; font-weight: bold;
+  color: #ffd700; margin-top: 4px;
+  text-shadow: 0 0 8px rgba(255,200,0,0.5);
+}
+#human-pts, #computer-pts { letter-spacing: 1px; }
+#new-game-bar {
+  display: flex; gap: 16px; align-items: center; justify-content: center;
+  margin-top: 20px; padding: 14px 28px;
+  border-top: 2px solid #4a2800;
+  background: #120500; border-radius: 6px;
+  width: 100%; max-width: 900px; flex-wrap: wrap;
+}
+#newGameBtn { background: #5a1010; border-color: #c04040; }
+#newGameBtn:hover { background: #7a1818; }
+#continueBtn { background: #1a5030; border-color: #40d870; }
+#continueBtn:hover:not(:disabled) { background: #246040; }
+#geminiBtn { background: #105040; border-color: #40c090; }
+#geminiBtn:hover:not(:disabled) { background: #186050; }
+#geminiBtn.off { background: #3a1010; border-color: #803030; }
+#api-key-wrap { display: flex; align-items: center; gap: 6px; }
+#api-key-wrap label { color: #c0a070; font-size: 0.9em; white-space: nowrap; }
+#apiKeyInput {
+  width: 220px; padding: 6px 10px;
+  background: #1a0800; color: #f0e0c0;
+  border: 2px solid #7a5018; border-radius: 5px;
+  font-size: 0.88em; font-family: monospace;
+}
+#apiKeyInput:focus { outline: none; border-color: #c8962a; }
+#apiKeyToggle {
+  padding: 5px 9px; background: #2a1008; color: #c0a070;
+  border: 1px solid #7a5018; border-radius: 5px;
+  cursor: pointer; font-size: 0.9em;
+}
+#apiKeyToggle:hover { background: #3a1810; }

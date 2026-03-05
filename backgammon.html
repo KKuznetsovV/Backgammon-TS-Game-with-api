@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backgammon</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>BACKGAMMON</h1>
+<div id="action-bar">
+  <button id="rollBtn" disabled>Roll Dice</button>
+  <button id="revertBtn" disabled>Revert Moves</button>
+</div>
+<div id="status">Press "New Game" to start.</div>
+<div id="board-wrapper">
+  <canvas id="board"></canvas>
+  <button id="rollOverlayBtn" class="roll-overlay-btn">&#x1F3B2; Roll Dice</button>
+</div>
+<div id="score-bar">
+  <span id="white-score">Kojany (White): 0 borne off</span>
+  <span id="black-score">Pcyushka (Black): 0 borne off</span>
+</div>
+<div id="match-score-bar">
+  <span id="human-pts">Kojany: 0 pts</span>
+  <span id="computer-pts">Pcyushka: 0 pts</span>
+</div>
+<div id="new-game-bar">
+  <label>Difficulty:
+    <select id="difficulty">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+      <option value="extrahard">Extra Hard</option>
+      <option value="worldchamp">World Champ</option>
+    </select>
+  </label>
+  <button id="newGameBtn">New Game</button>
+  <button id="continueBtn" style="display:none">Continue Series</button>
+  <button id="geminiBtn">Gemini: ON</button>
+  <span id="api-key-wrap">
+    <label for="apiKeyInput">API Key:</label>
+    <input id="apiKeyInput" type="password" placeholder="Paste Gemini API key…" autocomplete="off" spellcheck="false">
+    <button id="apiKeyToggle" title="Show/hide key">&#x1F441;</button>
+  </span>
+</div>
+<script src="app.js" defer></script>
+</body>
+</html>
