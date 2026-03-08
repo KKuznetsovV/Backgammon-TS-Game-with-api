@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["ES2017", "DOM"],
+    "lib": ["ES2022", "DOM"],
     "strict": true,
     "noEmitOnError": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "module": "ES2015",
+    "module": "es2022",
     "moduleResolution": "node",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

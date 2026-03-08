@@ -153,7 +153,9 @@
   let winMessage: WinMessage | null = null;
   let animFrameId: number | null = null;
   let diceRollAnim: DiceRollAnim | null = null;
-  let boardBgImage: HTMLImageElement | null = null;
+  let adviceMode = false;
+  let advisedSource: MoveFrom | null = null;
+  let advisedDests: number[] = [];
 
   const getComputerColor = (): Player => humanColor === 'white' ? 'black' : 'white';
   const getHumanLabel = (): string => `${humanName} (${humanColor === 'white' ? 'White' : 'Black'})`;
@@ -214,10 +216,15 @@
     currentPlayer = null;
     gamePhase = 'opening';
     difficulty = diffSel.value;
+    adviceMode = difficulty === 'easy'
+      ? window.confirm('Would you like to receive move advice during the game?')
+      : false;
+    if (adviceMode) window.alert('You will see my advices highlighted in pink, feel free to use them :)');
+    advisedSource = null; advisedDests = [];
     setStatus(`${humanName} vs ${computerName} — roll to decide who goes first!`);
     rollBtn.disabled = false;
     revertBtn.disabled = true;
-    rollOverlayBtn.textContent = '\uD83C\uDFB2 Roll for First Move';
+    rollOverlayBtn.textContent = '\u{1F3B2} Roll for First Move';
     showRollOverlay();
     draw();
     updateScore();
@@ -245,12 +252,14 @@
 
   const isWhiteHome = (): boolean => {
     if (barW > 0) return false;
-    return !Array.from({ length: 18 }, (_, i) => i + 7).some(p => board[p] > 0);
+    for (let p = 7; p <= 24; p++) { if (board[p] > 0) return false; }
+    return true;
   };
 
   const isBlackHome = (): boolean => {
     if (barB > 0) return false;
-    return !Array.from({ length: 18 }, (_, i) => i + 1).some(p => board[p] < 0);
+    for (let p = 1; p <= 18; p++) { if (board[p] < 0) return false; }
+    return true;
   };
 
   const canLand = (p: number, player: Player): boolean => {
@@ -276,8 +285,8 @@
         if (die === from) {
           moves.push({ from, to: 0 });
         } else if (die > from) {
-          const isHigher = Array.from({ length: 6 - from }, (_, i) => from + 1 + i)
-            .some(p2 => board[p2] > 0);
+          let isHigher = false;
+          for (let p2 = from + 1; p2 <= 6; p2++) { if (board[p2] > 0) { isHigher = true; break; } }
           if (!isHigher) moves.push({ from, to: 0 });
         } else {
           const to = from - die;
@@ -290,8 +299,8 @@
         if (die === (25 - from)) {
           moves.push({ from, to: 25 });
         } else if (diePoint < from) {
-          const isLower = Array.from({ length: from - 19 }, (_, i) => 19 + i)
-            .some(p2 => board[p2] < 0);
+          let isLower = false;
+          for (let p2 = 19; p2 < from; p2++) { if (board[p2] < 0) { isLower = true; break; } }
           if (!isLower) moves.push({ from, to: 25 });
         } else {
           const to = from + die;
@@ -304,20 +313,20 @@
     };
 
     if (player === 'white' && barW > 0) {
-      [...new Set(mLeft)].forEach(d => tryDie('bar', d));
+      for (const d of new Set(mLeft)) tryDie('bar', d);
       return dedup(moves);
     }
     if (player === 'black' && barB > 0) {
-      [...new Set(mLeft)].forEach(d => tryDie('bar', d));
+      for (const d of new Set(mLeft)) tryDie('bar', d);
       return dedup(moves);
     }
 
-    [...new Set(mLeft)].forEach(d => {
-      Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
+    for (const d of new Set(mLeft)) {
+      for (let p = 1; p <= 24; p++) {
         const isOccupied = player === 'white' ? board[p] > 0 : board[p] < 0;
         if (isOccupied) tryDie(p, d);
-      });
-    });
+      }
+    }
     return dedup(moves);
   };
 
@@ -334,7 +343,16 @@
 
   const getValidDestsFrom = (src: MoveFrom): number[] => {
     const moves = getAllLegalMoves(movesLeft, currentPlayer!);
-    return [...new Set(moves.filter(m => m.from === src).map(m => m.to))];
+    const rawDests = [...new Set(moves.filter(m => m.from === src).map(m => m.to))];
+    if (rawDests.length === 0) return [];
+    const maxTotal = maxDiceUsable(currentPlayer!);
+    return rawDests.filter(to => {
+      const b2 = [...board], bw2 = barW, bb2 = barB, ow2 = offW, ob2 = offB, ml2 = [...movesLeft];
+      applyMove(src, to);
+      const afterMax = maxDiceUsable(currentPlayer!);
+      board = b2; barW = bw2; barB = bb2; offW = ow2; offB = ob2; movesLeft = ml2;
+      return 1 + afterMax >= maxTotal;
+    });
   };
 
   const applyMove = (from: MoveFrom, to: number): void => {
@@ -346,8 +364,8 @@
       dieUsed = player === 'white' ? from : 25 - from;
       const candidates = movesLeft.filter(d => d >= dieUsed);
       dieUsed = candidates.length > 0
-        ? candidates.reduce((a, b) => a < b ? a : b)
-        : movesLeft.reduce((a, b) => a > b ? a : b);
+        ? Math.min(...candidates)
+        : Math.max(...movesLeft);
     } else {
       dieUsed = player === 'white' ? from - to : to - from;
     }
@@ -370,6 +388,42 @@
     if (player === 'white') board[to]++; else board[to]--;
   };
 
+  // Returns the maximum number of dice that `player` can legally use from the
+  // current position with the current movesLeft.  Used to enforce the rule that
+  // a player must always use as many dice as possible.
+  const maxDiceUsable = (player: Player): number => {
+    const bSnap = [...board], bwSnap = barW, bbSnap = barB;
+    const owSnap = offW, obSnap = offB, mlSnap = [...movesLeft], cpSnap = currentPlayer;
+    currentPlayer = player;
+    let best = 0;
+    const target = mlSnap.length;
+    const visited = new Set<string>();
+    const dfs = (used: number): void => {
+      if (used > best) best = used;
+      if (best === target) return;
+      const key = `${board.join(',')}|${barW},${barB},${offW},${offB}|${movesLeft.join(',')}`;
+      if (visited.has(key)) return;
+      visited.add(key);
+      const legalMoves = getAllLegalMoves(movesLeft, player);
+      if (legalMoves.length === 0) return;
+      const seen = new Set<string>();
+      for (const m of legalMoves) {
+        const mk = `${m.from},${m.to}`;
+        if (seen.has(mk)) continue;
+        seen.add(mk);
+        const b2 = [...board], bw2 = barW, bb2 = barB, ow2 = offW, ob2 = offB, ml2 = [...movesLeft];
+        applyMove(m.from, m.to);
+        dfs(used + 1);
+        board = b2; barW = bw2; barB = bb2; offW = ow2; offB = ob2; movesLeft = ml2;
+        if (best === target) break;
+      }
+    };
+    dfs(0);
+    board = bSnap; barW = bwSnap; barB = bbSnap;
+    offW = owSnap; offB = obSnap; movesLeft = mlSnap; currentPlayer = cpSnap;
+    return best;
+  };
+
   const endTurn = (): void => {
     selectedSrc = null; validDests = []; combinedDests = []; pickedQueue = [];
     snapshot = undefined;
@@ -378,9 +432,18 @@
     if (offB >= 15) { endGame('black'); return; }
     currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
     gamePhase = 'rolling';
+    advisedSource = null; advisedDests = [];
+    // Auto-skip if the player cannot move regardless of what dice they roll
+    if (!DICE_POOL.some(({ d }) => getAllLegalMoves(d, currentPlayer!).length > 0)) {
+      const skippedName = currentPlayer === humanColor ? humanName : computerName;
+      setStatus(`${skippedName} has no valid moves for any dice — turn skipped!`);
+      draw();
+      setTimeout(endTurn, 1400);
+      return;
+    }
     if (currentPlayer === humanColor) {
       rollBtn.disabled = false;
-      rollOverlayBtn.textContent = '\uD83C\uDFB2 Roll Dice';
+      rollOverlayBtn.textContent = '\u{1F3B2} Roll Dice';
       setStatus(`${humanName}'s turn! Roll the dice.`);
       showRollOverlay();
     } else {
@@ -436,6 +499,8 @@
         setStatus(`Rolled ${d1} & ${d2}. No valid moves!`);
         revertBtn.disabled = true;
         setTimeout(endTurn, 1400);
+      } else {
+        updateAdvice();
       }
       draw();
     });
@@ -457,7 +522,7 @@
     } else {
       setStatus(`Both rolled ${h} — it's a tie! Roll again.`);
       setTimeout(() => {
-        rollOverlayBtn.textContent = '\uD83C\uDFB2 Roll Again';
+        rollOverlayBtn.textContent = '\u{1F3B2} Roll Again';
         showRollOverlay();
       }, 1400);
     }
@@ -470,7 +535,7 @@
     gamePhase = 'rolling';
     if (winner === 'human') {
       rollBtn.disabled = false;
-      rollOverlayBtn.textContent = '\uD83C\uDFB2 Roll Dice';
+      rollOverlayBtn.textContent = '\u{1F3B2} Roll Dice';
       setStatus(`${humanName} goes first as White! Roll the dice.`);
       showRollOverlay();
     } else {
@@ -537,7 +602,7 @@
         const numLocked = progress >= 0.82
           ? Math.min(Math.ceil(((progress - 0.82) / 0.18) * n), n)
           : 0;
-        Array.from({ length: n }, (_, i) => i).forEach(i => {
+        for (let i = 0; i < n; i++) {
           if (i < numLocked) {
             diceRollAnim!.locked[i] = true;
             diceRollAnim!.displayDice[i] = finalDice[i];
@@ -546,7 +611,7 @@
             diceRollAnim!.displayDice[i] = Math.floor(Math.random() * 6) + 1;
             diceRollAnim!.rotations[i] = (diceRollAnim!.rotations[i] + Math.random() * 60 + 20) % 360;
           }
-        });
+        }
         lastSwap = now;
       }
       draw();
@@ -576,7 +641,7 @@
     revertBtn.disabled = true;
     if (lastGameWinner === 'human') {
       rollBtn.disabled = false;
-      rollOverlayBtn.textContent = '\uD83C\uDFB2 Roll Dice';
+      rollOverlayBtn.textContent = '\u{1F3B2} Roll Dice';
       setStatus(`${humanName} won last game — plays White! Roll the dice.`);
       showRollOverlay();
     } else {
@@ -631,8 +696,7 @@
       `Board state (positive = white checkers, negative = black checkers):\n` +
       `${boardLines.join('\n')}\n\n` +
       `Dice: [${movesLeft.join(', ')}]\n\n` +
-      `${strategyNote} ` +
-      `Reply with ONLY a JSON array and nothing else:\n` +
+      `${strategyNote} Reply with ONLY a JSON array and nothing else:\n` +
       `[{"from": <number or "bar">, "to": <number>}, ...]`;
 
     try {
@@ -659,7 +723,7 @@
       const parts = (data as any).candidates?.[0]?.content?.parts;
       if (!parts) throw new Error(`Unexpected response structure: ${JSON.stringify(data).slice(0, 200)}`);
       const answerPart = parts.find((p: any) => !p.thought && p.text && p.text.includes('[')) || parts[parts.length - 1];
-      const content = answerPart?.text || '';
+      const content = answerPart?.text ?? '';
       const startIndex = content.indexOf('[');
       const endIndex = content.lastIndexOf(']');
 
@@ -667,7 +731,7 @@
         throw new Error('No JSON array found in response');
       }
 
-      const parsed = JSON.parse(content.substring(startIndex, endIndex + 1));
+      const parsed = JSON.parse(content.slice(startIndex, endIndex + 1));
       if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Invalid response format');
 
       const rawSeq: Move[] = parsed.map((m: any) => ({
@@ -706,22 +770,20 @@
 
     if (hasAnyValidMoves()) {
       const cColor = getComputerColor();
-      const sequence = isGeminiEnabled
+      const sequence = isGeminiEnabled && countDistinctMoveOutcomes(cColor) > 1
         ? await pickGeminiSequence(cColor)
         : pickLocalSequence(cColor);
 
-      let stopped = false;
-      await sequence.reduce(async (prev, move) => {
-        await prev;
-        if (stopped || movesLeft.length === 0) { stopped = true; return; }
+      for (const move of sequence) {
+        if (movesLeft.length === 0) break;
         const legal = getAllLegalMoves(movesLeft, cColor);
-        if (!legal.some(m => m.from === move.from && m.to === move.to)) { stopped = true; return; }
+        if (!legal.some(m => m.from === move.from && m.to === move.to)) break;
         setStatus(`${computerName} moves ${move.from} → ${move.to}.`);
         applyMove(move.from, move.to);
         updateScore();
         draw();
         await new Promise<void>(res => setTimeout(res, 500));
-      }, Promise.resolve() as Promise<void>);
+      }
     }
 
     setTimeout(endTurn, 400);
@@ -754,7 +816,7 @@
     let bestSeq: Move[] = [];
     const visited = new Set<string>();
     const search = (seq: Move[]): void => {
-      const stateKey = board.join(',') + '|' + barW + ',' + barB + ',' + offW + ',' + offB + '|' + movesLeft.join(',');
+      const stateKey = `${board.join(',')}|${barW},${barB},${offW},${offB}|${movesLeft.join(',')}`;
       if (visited.has(stateKey)) return;
       visited.add(stateKey);
       const moves = getAllLegalMoves(movesLeft, player);
@@ -800,51 +862,43 @@
   const pickLocalSequence = (player: Player): Move[] => {
     difficulty = diffSel.value;
     if (difficulty === 'easy') return pickEasySequence(player);
-    if (difficulty === 'extrahard') return getBestMoveSequence(player, evaluateEnhanced);
-    if (difficulty === 'worldchamp') return getBestMoveSequence(player, evaluateWithRollout);
-    return getBestMoveSequence(player);
+    if (difficulty === 'extrahard') return getBestMoveSequence(player, evaluateWithRollout);
+    if (difficulty === 'worldchamp') return getBestMoveSequence(player, evaluateWithFullRollout);
+    return getBestMoveSequence(player, evaluateEnhanced);  // medium / hard
   };
 
   const evaluateHard = (cColor: Player): number => {
     let score = 0;
     let blackPips = 0, whitePips = 0;
-    Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
+    for (let p = 1; p <= 24; p++) {
       if (board[p] > 0) whitePips += board[p] * p;
       else if (board[p] < 0) blackPips += (-board[p]) * (25 - p);
-    });
+    }
     blackPips += barB * 25;
     whitePips += barW * 25;
 
     if (cColor === 'black') {
-      score += (whitePips - blackPips) * 3;
+      score += (whitePips - blackPips) * 5;
       score += offB * 50;
       score -= offW * 50;
       score += barW * 30;
-      Array.from({ length: 9 }, (_, i) => i + 14).forEach(p => {
-        if (board[p] <= -2) score += 12;
-      });
-      Array.from({ length: 6 }, (_, i) => i + 19).forEach(p => {
-        if (board[p] <= -2) score += 18;
-      });
-      Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
+      for (let p = 14; p <= 22; p++) { if (board[p] <= -2) score += 12; }
+      for (let p = 19; p <= 24; p++) { if (board[p] <= -2) score += 18; }
+      for (let p = 1; p <= 24; p++) {
         if (board[p] === -1) score -= 10;
         if (board[p] === 1) score += 5;
-      });
+      }
     } else {
-      score += (blackPips - whitePips) * 3;
+      score += (blackPips - whitePips) * 5;
       score += offW * 50;
       score -= offB * 50;
       score += barB * 30;
-      Array.from({ length: 9 }, (_, i) => i + 2).forEach(p => {
-        if (board[p] >= 2) score += 12;
-      });
-      Array.from({ length: 6 }, (_, i) => i + 1).forEach(p => {
-        if (board[p] >= 2) score += 18;
-      });
-      Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
+      for (let p = 2; p <= 10; p++) { if (board[p] >= 2) score += 12; }
+      for (let p = 1; p <= 6; p++) { if (board[p] >= 2) score += 18; }
+      for (let p = 1; p <= 24; p++) {
         if (board[p] === 1) score -= 10;
         if (board[p] === -1) score += 5;
-      });
+      }
     }
     return score;
   };
@@ -853,37 +907,114 @@
     let score = evaluateHard(cColor);
     const isB = cColor === 'black';
 
-    const { maxRun } = Array.from({ length: 24 }, (_, i) => i + 1).reduce(
-      (acc, p) => {
-        const run = (isB ? board[p] <= -2 : board[p] >= 2) ? acc.run + 1 : 0;
-        return { run, maxRun: Math.max(acc.maxRun, run) };
-      },
-      { run: 0, maxRun: 0 }
-    );
+    // Short-circuit for pure race: no positional heuristics needed when checkers can't meet
+    if (barW === 0 && barB === 0) {
+      let maxWhite = 0, minBlack = 25;
+      for (let p = 1; p <= 24; p++) {
+        if (board[p] > 0 && p > maxWhite) maxWhite = p;
+        if (board[p] < 0 && p < minBlack) minBlack = p;
+      }
+      if (maxWhite <= minBlack) return score;
+    }
+
+    let _run = 0, maxRun = 0;
+    for (let p = 1; p <= 24; p++) {
+      _run = (isB ? board[p] <= -2 : board[p] >= 2) ? _run + 1 : 0;
+      maxRun = Math.max(maxRun, _run);
+    }
     score += maxRun * maxRun * 12;
 
     const oppHome = isB ? [19,20,21,22,23,24] : [1,2,3,4,5,6];
     score += oppHome.filter(p => isB ? board[p] <= -2 : board[p] >= 2).length * 30;
 
-    Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
-      if (isB ? board[p] !== -1 : board[p] !== 1) return;
-      const shots = Array.from({ length: 6 }, (_, i) => i + 1).reduce((acc, d) => {
-        if (isB) return acc + (p + d <= 24 && board[p + d] > 0 ? 1 : 0) + (barW > 0 && (25 - d) === p ? 1 : 0);
-        return acc + (p - d >= 1 && board[p - d] < 0 ? 1 : 0) + (barB > 0 && d === p ? 1 : 0);
-      }, 0);
+    for (let p = 1; p <= 24; p++) {
+      if (isB ? board[p] !== -1 : board[p] !== 1) continue;
+      let shots = 0;
+      for (let d = 1; d <= 6; d++) {
+        if (isB) shots += (p + d <= 24 && board[p + d] > 0 ? 1 : 0) + (barW > 0 && (25 - d) === p ? 1 : 0);
+        else shots += (p - d >= 1 && board[p - d] < 0 ? 1 : 0) + (barB > 0 && d === p ? 1 : 0);
+      }
       const isInOwnHome = isB ? p >= 19 : p <= 6;
       score -= shots * (isInOwnHome ? 14 : 9);
-    });
+    }
 
     const home = isB ? [19,20,21,22,23,24] : [1,2,3,4,5,6];
     const madeHome = home.filter(p => isB ? board[p] <= -2 : board[p] >= 2).length;
     score += madeHome * madeHome * 8;
 
     const [eStart, eEnd] = isB ? [1, 18] : [7, 24];
-    Array.from({ length: eEnd - eStart + 1 }, (_, i) => i + eStart).forEach(p => {
+    for (let p = eStart; p <= eEnd; p++) {
       const n = isB ? -board[p] : board[p];
       if (n >= 4) score -= (n - 3) * 10;
-    });
+    }
+
+    // Key point bonuses: 5-pt (white) / 20-pt (black) and their neighbours are the
+    // most strategically valuable points in backgammon
+    const keyPts = isB ? [20, 21, 19, 18] : [5, 4, 6, 7];
+    const keyBonuses = [35, 25, 20, 15];
+    for (let ki = 0; ki < keyPts.length; ki++) {
+      if ((isB ? -board[keyPts[ki]] : board[keyPts[ki]]) >= 2) score += keyBonuses[ki];
+    }
+
+    // Own bar penalty: being on bar is more disruptive than pip count alone captures
+    score -= (isB ? barB : barW) * 30;
+
+    // Back game bonus: holding 2+ anchor points in opponent's home board
+    const oppHS = isB ? 1 : 19, oppHE = isB ? 6 : 24;
+    let anchorCount = 0;
+    for (let p = oppHS; p <= oppHE; p++) {
+      if ((isB ? -board[p] : board[p]) >= 2) anchorCount++;
+    }
+    if (anchorCount >= 2) score += anchorCount * 25;
+
+    // Indirect shot exposure: blots reachable by 2-dice combinations (distances 7–11)
+    // Number of 2-dice combos summing to D: 12 - D  (7→5, 8→4... wait: 7→6, 8→5, 9→4, 10→3, 11→2)
+    for (let p = 1; p <= 24; p++) {
+      if (isB ? board[p] !== -1 : board[p] !== 1) continue;
+      let indW = 0;
+      for (let dist = 7; dist <= 11; dist++) {
+        const src = isB ? p + dist : p - dist;
+        if (src >= 1 && src <= 24 && (isB ? board[src] : -board[src]) > 0)
+          indW += (13 - dist) / 36; // 7→6/36, 8→5/36, 9→4/36, 10→3/36, 11→2/36
+      }
+      if (indW > 0) score -= indW * ((isB ? p >= 19 : p <= 6) ? 8 : 5);
+    }
+
+    // Prime trapping bonus: count opponent checkers that cannot pass our longest prime
+    // White moves high→low; Black moves low→high.
+    // If black has a prime at [primeStart..primeEnd], white checkers at p > primeEnd are trapped.
+    // If white has a prime at [primeStart..primeEnd], black checkers at p < primeStart are trapped.
+    {
+      let pLen = 0, bestPLen = 0, bestPEnd = 0;
+      for (let p = 1; p <= 24; p++) {
+        if (isB ? board[p] <= -2 : board[p] >= 2) {
+          pLen++;
+          if (pLen > bestPLen) { bestPLen = pLen; bestPEnd = p; }
+        } else {
+          pLen = 0;
+        }
+      }
+      if (bestPLen >= 3) {
+        const primeStart = bestPEnd - bestPLen + 1;
+        let trapped = 0;
+        for (let p = 1; p <= 24; p++) {
+          const n = isB ? board[p] : -board[p]; // >0 if opponent checker here
+          if (n > 0) trapped += isB ? (p > bestPEnd ? n : 0) : (p < primeStart ? n : 0);
+        }
+        score += trapped * bestPLen * 4;
+      }
+    }
+
+    // Gammon / backgammon threats
+    {
+      const myOff  = isB ? offB : offW;
+      const oppOff = isB ? offW : offB;
+      const myBar  = isB ? barB : barW;
+      // Gammon threat: we are bearing off but the opponent hasn't started yet
+      if (oppOff === 0 && myOff >= 3) score += myOff * 10;
+      // Backgammon danger: we are stuck on bar while the opponent is deep into bear-off
+      if (myOff === 0 && myBar > 0 && oppOff >= 10) score -= myBar * 35;
+    }
 
     return score;
   };
@@ -896,6 +1027,14 @@
       }))
     )
   )();
+
+  // 5 representative dice outcomes used by the world-champ 2nd-ply counter-response sampling.
+  // Together they cover the most important parts of the probability distribution.
+  const SAMPLE_DICE: typeof DICE_POOL = [
+    { d: [1, 2], w: 2 }, { d: [3, 4], w: 2 }, { d: [5, 6], w: 2 },
+    { d: [3, 3], w: 1 }, { d: [5, 5], w: 1 }
+  ];
+  const SAMPLE_DICE_WEIGHT = 8;
 
   const evaluateWithRollout = (cColor: Player): number => {
     const oppColor: Player = cColor === 'white' ? 'black' : 'white';
@@ -915,8 +1054,89 @@
     return total / 36;
   };
 
+  // 2-ply evaluation for world champ: after the opponent's best response (1st ply),
+  // we also sample our own best counter-response over SAMPLE_DICE outcomes (2nd ply).
+  // This gives true look-ahead into our next roll without exponential cost.
+  const evaluateWithFullRollout = (cColor: Player): number => {
+    const oppColor: Player = cColor === 'white' ? 'black' : 'white';
+    let total = 0;
+    DICE_POOL.forEach(({ d: oppDice, w }) => {
+      const bSnap = [...board], bwSnap = barW, bbSnap = barB;
+      const owSnap = offW, obSnap = offB, mlSnap = [...movesLeft], cpSnap = currentPlayer;
+      movesLeft = [...oppDice];
+      currentPlayer = oppColor;
+      const oppSeq = getBestMoveSequence(oppColor, evaluateEnhanced);
+      oppSeq.forEach(move => applyMove(move.from, move.to));
+      // 2nd ply: sample our best counter-response across representative dice outcomes
+      let innerTotal = 0;
+      SAMPLE_DICE.forEach(({ d: ourDice, w: iw }) => {
+        const b2 = [...board], bw2 = barW, bb2 = barB, ow2 = offW, ob2 = offB, ml2 = [...movesLeft], cp2 = currentPlayer;
+        movesLeft = [...ourDice]; currentPlayer = cColor;
+        const ourSeq = getBestMoveSequence(cColor, evaluateEnhanced);
+        ourSeq.forEach(move => applyMove(move.from, move.to));
+        innerTotal += evaluateEnhanced(cColor) * iw;
+        board = b2; barW = bw2; barB = bb2; offW = ow2; offB = ob2; movesLeft = ml2; currentPlayer = cp2;
+      });
+      board = bSnap; barW = bwSnap; barB = bbSnap;
+      offW = owSnap; offB = obSnap; movesLeft = mlSnap; currentPlayer = cpSnap;
+      total += (innerTotal / SAMPLE_DICE_WEIGHT) * w;
+    });
+    return total / 36;
+  };
+
+  // Returns true if the player can make at least one move with some dice combination
+  const canMoveForAnyDice = (player: Player): boolean =>
+    DICE_POOL.some(({ d }) => getAllLegalMoves(d, player).length > 0);
+
+  // Counts distinct terminal board positions reachable this turn (capped at 2 for speed)
+  const countDistinctMoveOutcomes = (player: Player): number => {
+    const bSnap = [...board], bwSnap = barW, bbSnap = barB;
+    const owSnap = offW, obSnap = offB, mlSnap = [...movesLeft], cpSnap = currentPlayer;
+    currentPlayer = player;
+    let count = 0;
+    const visited = new Set<string>();
+    const search = (): void => {
+      const key = `${board.join(',')}|${barW},${barB},${offW},${offB}|${movesLeft.join(',')}`;
+      if (visited.has(key)) return;
+      visited.add(key);
+      const moves = getAllLegalMoves(movesLeft, player);
+      if (moves.length === 0) { count++; return; }
+      const seen = new Set<string>();
+      for (const m of moves) {
+        const mk = `${m.from},${m.to}`;
+        if (seen.has(mk)) continue;
+        seen.add(mk);
+        const b2 = [...board], bw2 = barW, bb2 = barB, ow2 = offW, ob2 = offB, ml2 = [...movesLeft];
+        applyMove(m.from, m.to);
+        if (count <= 1) search();
+        board = b2; barW = bw2; barB = bb2; offW = ow2; offB = ob2; movesLeft = ml2;
+        if (count > 1) break;
+      }
+    };
+    search();
+    board = bSnap; barW = bwSnap; barB = bbSnap;
+    offW = owSnap; offB = obSnap; movesLeft = mlSnap; currentPlayer = cpSnap;
+    return count;
+  };
+
+  // Computes the next advised move for the human player (based on evaluateEnhanced)
+  const updateAdvice = (): void => {
+    if (!adviceMode || currentPlayer !== humanColor || gamePhase !== 'moving') {
+      advisedSource = null; advisedDests = [];
+      return;
+    }
+    const seq = getBestMoveSequence(humanColor, evaluateEnhanced);
+    if (seq.length > 0) {
+      advisedSource = seq[0].from;
+      advisedDests = [seq[0].to];
+    } else {
+      advisedSource = null; advisedDests = [];
+    }
+  };
+
+
   const afterMove = (): void => {
-    updateScore(); draw();
+    updateScore(); updateAdvice(); draw();
     if (movesLeft.length === 0 || !hasAnyValidMoves()) {
       if (offW >= 15) { endGame('white'); return; }
       if (offB >= 15) { endGame('black'); return; }
@@ -1074,14 +1294,13 @@
       if (humanColor === 'white' && my >= BOARD_BOT - 120 && my <= BOARD_BOT) return 0;
       if (humanColor === 'black' && my >= BOARD_TOP && my <= BOARD_TOP + 120) return 25;
     }
-    return Array.from({ length: 24 }, (_, i) => i + 1).reduce<number | null>((found, p) => {
-      if (found !== null) return found;
+    for (let p = 1; p <= 24; p++) {
       const cx = pointCenterX(p);
-      if (mx < cx - PW / 2 || mx >= cx + PW / 2) return null;
+      if (mx < cx - PW / 2 || mx >= cx + PW / 2) continue;
       if (isTop(p) && my >= BOARD_TOP && my <= BOARD_TOP + PH) return p;
       if (!isTop(p) && my <= BOARD_BOT && my >= BOARD_BOT - PH) return p;
-      return null;
-    }, null);
+    }
+    return null;
   };
 
   let S: StylesCache = {} as StylesCache;
@@ -1183,9 +1402,6 @@
   };
   loadStyles();
 
-  const _bgImg = new Image();
-  _bgImg.onload = () => { boardBgImage = _bgImg; draw(); };
-  _bgImg.src = 'backgammon-set-large-star-turkish-antik-mozaik-tavla-57.jpg';
 
   const draw = (): void => {
     ctx.clearRect(0, 0, W, H);
@@ -1196,6 +1412,7 @@
     drawBearOff();
     drawDice();
     drawHighlights();
+    drawAdvice();
     if (gamePhase === 'opening') drawOpeningRoll();
     if (winMessage) drawWinMessage();
   };
@@ -1243,17 +1460,13 @@
     ctx.fillStyle = S.labelGold;
     ctx.font = S.fontPtLabel;
     ctx.textAlign = 'center';
-    Array.from({ length: 12 }, (_, i) => i + 13).forEach(p =>
-      ctx.fillText(String(p), pointCenterX(p), MARGIN - 6)
-    );
-    Array.from({ length: 12 }, (_, i) => i + 1).forEach(p =>
-      ctx.fillText(String(p), pointCenterX(p), H - 6)
-    );
+    for (let p = 13; p <= 24; p++) ctx.fillText(String(p), pointCenterX(p), MARGIN - 6);
+    for (let p = 1; p <= 12; p++) ctx.fillText(String(p), pointCenterX(p), H - 6);
   };
 
   const drawPoints = (): void => {
     const colors = [S.pointRed, S.pointCream];
-    Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
+    for (let p = 1; p <= 24; p++) {
       const cx = pointCenterX(p);
       ctx.fillStyle = colors[(p - 1) % 2];
       ctx.globalAlpha = 0.92;
@@ -1273,20 +1486,20 @@
       ctx.lineWidth = 1.5;
       ctx.stroke();
       ctx.globalAlpha = 1;
-    });
+    }
   };
 
   const drawCheckers = (): void => {
-    Array.from({ length: 24 }, (_, i) => i + 1).forEach(p => {
+    for (let p = 1; p <= 24; p++) {
       const count = board[p];
-      if (count === 0) return;
+      if (count === 0) continue;
       const player: Player = count > 0 ? 'white' : 'black';
       const n = Math.abs(count);
       const maxVisible = 5;
-      Array.from({ length: Math.min(n, maxVisible) }, (_, i) => i).forEach(i => {
+      for (let i = 0; i < Math.min(n, maxVisible); i++) {
         const { x, y } = checkerPos(p, i);
         drawChecker(x, y, player);
-      });
+      }
       if (n > maxVisible) {
         const { x, y } = checkerPos(p, maxVisible - 1);
         ctx.fillStyle = S.labelWhite;
@@ -1296,7 +1509,7 @@
         ctx.fillText(String(n), x, y);
         ctx.textBaseline = 'alphabetic';
       }
-    });
+    }
   };
 
   const drawChecker = (x: number, y: number, player: Player): void => {
@@ -1341,13 +1554,13 @@
 
   const drawBar = (): void => {
     const bx = BAR_X + BAR_W / 2;
-    Array.from({ length: barW }, (_, i) => i).forEach(i => {
+    for (let i = 0; i < barW; i++) {
       drawChecker(bx, BOARD_BOT - CR - i * CR * 2 - 5, 'white');
-    });
+    }
     if (barW > 1) {
       ctx.fillStyle = S.labelWhite; ctx.font = S.fontBarCount;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('×' + barW, bx, BOARD_BOT - 10);
+      ctx.fillText(`\u00d7${barW}`, bx, BOARD_BOT - 10);
       ctx.textBaseline = 'alphabetic';
     }
     if (barW > 0) {
@@ -1355,9 +1568,9 @@
       ctx.textAlign = 'center';
       ctx.fillText('BAR', bx, BOARD_BOT - PH / 2 + 15);
     }
-    Array.from({ length: barB }, (_, i) => i).forEach(i => {
+    for (let i = 0; i < barB; i++) {
       drawChecker(bx, BOARD_TOP + CR + i * CR * 2 + 5, 'black');
-    });
+    }
     if (barB > 0) {
       ctx.fillStyle = S.labelYellow; ctx.font = S.fontSmallLabel;
       ctx.textAlign = 'center';
@@ -1372,22 +1585,22 @@
     ctx.fillText('OFF', bx, BOARD_TOP + 28);
 
     const whiteStartY = BOARD_BOT - 18;
-    Array.from({ length: Math.min(offW, 10) }, (_, i) => i).forEach(i => {
+    for (let i = 0; i < Math.min(offW, 10); i++) {
       const row = Math.floor(i / 2);
       const col = i % 2;
       drawMiniChecker(BEAR_X + 10 + col * 16 + 6, whiteStartY - row * 16 - 6, 'white');
-    });
+    }
     if (offW > 0) {
       ctx.fillStyle = S.labelLight; ctx.font = S.fontBorneCount; ctx.textAlign = 'center';
       ctx.fillText(String(offW), bx, whiteStartY + 10);
     }
 
     const blackStartY = BOARD_TOP + 45;
-    Array.from({ length: Math.min(offB, 10) }, (_, i) => i).forEach(i => {
+    for (let i = 0; i < Math.min(offB, 10); i++) {
       const row = Math.floor(i / 2);
       const col = i % 2;
       drawMiniChecker(BEAR_X + 10 + col * 16 + 6, blackStartY + row * 16 + 6, 'black');
-    });
+    }
     if (offB > 0) {
       ctx.fillStyle = S.labelLight; ctx.font = S.fontBorneCount; ctx.textAlign = 'center';
       ctx.fillText(String(offB), bx, blackStartY + 10 + Math.ceil(Math.min(offB, 10) / 2) * 16);
@@ -1603,6 +1816,57 @@
     }
   };
 
+  const drawAdvice = (): void => {
+    if (!adviceMode || advisedSource === null) return;
+    // Pink arc highlight around the advised source checker
+    ctx.strokeStyle = 'rgba(255, 80, 190, 0.95)';
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 14; ctx.shadowColor = 'rgba(255, 80, 190, 0.8)';
+    if (advisedSource === 'bar') {
+      const barY = humanColor === 'white' ? BOARD_BOT / 2 : BOARD_TOP;
+      ctx.strokeRect(BAR_X + 4, barY, BAR_W - 8, BOARD_BOT / 2 - 4);
+    } else {
+      const cx = pointCenterX(advisedSource as number);
+      ctx.beginPath();
+      if (isTop(advisedSource as number)) {
+        ctx.arc(cx, BOARD_TOP + CR, PW / 2 - 2, 0, Math.PI);
+      } else {
+        ctx.arc(cx, BOARD_BOT - CR, PW / 2 - 2, Math.PI, 0);
+      }
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0; ctx.lineWidth = 1;
+    // When the advised source is selected, show pink triangles for advised destinations
+    if (selectedSrc === advisedSource) {
+      for (const dest of advisedDests) {
+        if (dest === 0) {
+          ctx.fillStyle = 'rgba(255, 80, 190, 0.4)';
+          ctx.fillRect(BEAR_X + 2, BOARD_BOT - 130, BEAR_W - 4, 128);
+        } else if (dest === 25) {
+          ctx.fillStyle = 'rgba(255, 80, 190, 0.4)';
+          ctx.fillRect(BEAR_X + 2, BOARD_TOP + 2, BEAR_W - 4, 128);
+        } else {
+          const cx = pointCenterX(dest);
+          ctx.fillStyle = 'rgba(255, 80, 190, 0.45)';
+          ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(255, 80, 190, 0.6)';
+          ctx.beginPath();
+          if (isTop(dest)) {
+            ctx.moveTo(cx - PW / 2, BOARD_TOP);
+            ctx.lineTo(cx + PW / 2, BOARD_TOP);
+            ctx.lineTo(cx, BOARD_TOP + PH);
+          } else {
+            ctx.moveTo(cx - PW / 2, BOARD_BOT);
+            ctx.lineTo(cx + PW / 2, BOARD_BOT);
+            ctx.lineTo(cx, BOARD_BOT - PH);
+          }
+          ctx.closePath(); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      }
+    }
+  };
+
+
   const drawOpeningRoll = (): void => {
     if (openingRoll.human === null) return;
 
@@ -1736,7 +2000,7 @@
   });
   geminiBtn.style.display = diffSel.value === 'easy' ? 'none' : '';
 
-  apiKeyInput.value = localStorage.getItem('geminiApiKey') || '';
+  apiKeyInput.value = localStorage.getItem('geminiApiKey') ?? '';
   apiKeyInput.addEventListener('input', () => {
     localStorage.setItem('geminiApiKey', apiKeyInput.value.trim());
   });
