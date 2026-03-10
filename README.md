@@ -1,4 +1,4 @@
-# Backgammon JS Game (with Optional Gemini AI)
+# Backgammon TS Game (with Optional Gemini AI)
 
 A browser-based backgammon game built with TypeScript, HTML5 Canvas, and CSS.
 
